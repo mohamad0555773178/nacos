@@ -21,21 +21,25 @@ import com.alibaba.nacos.consistency.entity.Log;
 import com.alibaba.nacos.consistency.entity.ReadRequest;
 import com.alibaba.nacos.consistency.entity.WriteRequest;
 import com.google.protobuf.ByteString;
-import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
 
+import org.junit.Assert;
+import org.junit.Test;
+
 public class ProtoMessageUtilTest {
     
     @Test
     public void testProto() throws Exception {
-        WriteRequest request = WriteRequest.newBuilder().setKey("test-proto-new").build();
+        WriteRequest request = WriteRequest.newBuilder()
+                .setKey("test-proto-new")
+                .build();
         
         byte[] bytes = request.toByteArray();
         Log log = Log.parseFrom(bytes);
-        assertEquals(request.getKey(), log.getKey());
+        Assert.assertEquals(request.getKey(), log.getKey());
     }
     
     @Test

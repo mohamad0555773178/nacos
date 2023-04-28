@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2021 Alibaba Group Holding Ltd.
+ * Copyright 1999-2018 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,38 +14,35 @@
  * limitations under the License.
  */
 
-package com.alibaba.nacos.plugin.auth.impl.controller;
+package com.alibaba.nacos.console.controller;
 
 import com.alibaba.nacos.api.common.Constants;
 import com.alibaba.nacos.auth.annotation.Secured;
-import com.alibaba.nacos.auth.config.AuthConfigs;
+import com.alibaba.nacos.auth.common.ActionTypes;
+import com.alibaba.nacos.auth.common.AuthConfigs;
+import com.alibaba.nacos.auth.common.AuthSystemTypes;
+import com.alibaba.nacos.auth.exception.AccessException;
 import com.alibaba.nacos.common.model.RestResult;
-import com.alibaba.nacos.common.model.RestResultUtils;
 import com.alibaba.nacos.common.utils.JacksonUtils;
-import com.alibaba.nacos.config.server.model.Page;
-import com.alibaba.nacos.plugin.auth.api.IdentityContext;
-import com.alibaba.nacos.plugin.auth.constant.ActionTypes;
-import com.alibaba.nacos.plugin.auth.exception.AccessException;
-import com.alibaba.nacos.plugin.auth.impl.authenticate.IAuthenticationManager;
-import com.alibaba.nacos.plugin.auth.impl.constant.AuthConstants;
-import com.alibaba.nacos.plugin.auth.impl.constant.AuthSystemTypes;
-import com.alibaba.nacos.plugin.auth.impl.persistence.RoleInfo;
-import com.alibaba.nacos.plugin.auth.impl.persistence.User;
-import com.alibaba.nacos.plugin.auth.impl.roles.NacosRoleServiceImpl;
-import com.alibaba.nacos.plugin.auth.impl.token.TokenManagerDelegate;
-import com.alibaba.nacos.plugin.auth.impl.users.NacosUser;
-import com.alibaba.nacos.plugin.auth.impl.users.NacosUserDetailsServiceImpl;
-import com.alibaba.nacos.plugin.auth.impl.utils.PasswordEncoderUtil;
+import com.alibaba.nacos.common.utils.Objects;
+import com.alibaba.nacos.config.server.auth.RoleInfo;
+import com.alibaba.nacos.config.server.model.User;
+import com.alibaba.nacos.config.server.utils.RequestUtil;
+import com.alibaba.nacos.console.security.nacos.JwtTokenManager;
+import com.alibaba.nacos.console.security.nacos.NacosAuthConfig;
+import com.alibaba.nacos.console.security.nacos.NacosAuthManager;
+import com.alibaba.nacos.console.security.nacos.roles.NacosRoleServiceImpl;
+import com.alibaba.nacos.console.security.nacos.users.NacosUser;
+import com.alibaba.nacos.console.security.nacos.users.NacosUserDetailsServiceImpl;
+import com.alibaba.nacos.console.utils.PasswordEncoderUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.HttpSessionRequiredException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -70,10 +67,9 @@ import java.util.List;
 public class UserController {
     
     @Autowired
-    private TokenManagerDelegate jwtTokenManager;
+    private JwtTokenManager jwtTokenManager;
     
     @Autowired
-    @Deprecated
     private AuthenticationManager authenticationManager;
     
     @Autowired
@@ -86,7 +82,7 @@ public class UserController {
     private AuthConfigs authConfigs;
     
     @Autowired
-    private IAuthenticationManager iAuthenticationManager;
+    private NacosAuthManager authManager;
     
     /**
      * Create a new user.
@@ -97,7 +93,7 @@ public class UserController {
      * @throws IllegalArgumentException if user already exist
      * @since 1.2.0
      */
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
+    @Secured(resource = NacosAuthConfig.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
     @PostMapping
     public Object createUser(@RequestParam String username, @RequestParam String password) {
         
@@ -106,7 +102,7 @@ public class UserController {
             throw new IllegalArgumentException("user '" + username + "' already exist!");
         }
         userDetailsService.createUser(username, PasswordEncoderUtil.encode(password));
-        return RestResultUtils.success("create user ok!");
+        return new RestResult<>(200, "create user ok!");
     }
     
     /**
@@ -117,18 +113,18 @@ public class UserController {
      * @since 1.2.0
      */
     @DeleteMapping
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
+    @Secured(resource = NacosAuthConfig.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
     public Object deleteUser(@RequestParam String username) {
         List<RoleInfo> roleInfoList = roleService.getRoles(username);
         if (roleInfoList != null) {
             for (RoleInfo roleInfo : roleInfoList) {
-                if (roleInfo.getRole().equals(AuthConstants.GLOBAL_ADMIN_ROLE)) {
+                if (roleInfo.getRole().equals(NacosRoleServiceImpl.GLOBAL_ADMIN_ROLE)) {
                     throw new IllegalArgumentException("cannot delete admin: " + username);
                 }
             }
         }
         userDetailsService.deleteUser(username);
-        return RestResultUtils.success("delete user ok!");
+        return new RestResult<>(200, "delete user ok!");
     }
     
     /**
@@ -136,27 +132,21 @@ public class UserController {
      *
      * @param username    username of user
      * @param newPassword new password of user
-     * @param response    http response
-     * @param request     http request
+     * @param response http response
+     * @param request http request
      * @return ok if update succeed
      * @throws IllegalArgumentException if user not exist or oldPassword is incorrect
      * @since 1.2.0
      */
     @PutMapping
-    @Secured(resource = AuthConstants.UPDATE_PASSWORD_ENTRY_POINT, action = ActionTypes.WRITE)
+    @Secured(resource = NacosAuthConfig.UPDATE_PASSWORD_ENTRY_POINT, action = ActionTypes.WRITE)
     public Object updateUser(@RequestParam String username, @RequestParam String newPassword,
             HttpServletResponse response, HttpServletRequest request) throws IOException {
         // admin or same user
-        try {
-            if (!hasPermission(username, request)) {
-                response.sendError(HttpServletResponse.SC_FORBIDDEN, "authorization failed!");
-                return null;
-            }
-        } catch (HttpSessionRequiredException e) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "session expired!");
-            return null;
+        if (!hasPermission(username, request)) {
+            return new RestResult<>(HttpServletResponse.SC_FORBIDDEN, "authorization failed!");
         }
-        
+
         User user = userDetailsService.getUserFromDatabase(username);
         if (user == null) {
             throw new IllegalArgumentException("user " + username + " not exist!");
@@ -164,20 +154,18 @@ public class UserController {
         
         userDetailsService.updateUserPassword(username, PasswordEncoderUtil.encode(newPassword));
         
-        return RestResultUtils.success("update user ok!");
+        return new RestResult<>(200, "update user ok!");
     }
-    
-    private boolean hasPermission(String username, HttpServletRequest request) throws HttpSessionRequiredException {
+
+    private boolean hasPermission(String username, HttpServletRequest request) {
         if (!authConfigs.isAuthEnabled()) {
             return true;
         }
-        IdentityContext identityContext = (IdentityContext) request.getSession()
-                .getAttribute(com.alibaba.nacos.plugin.auth.constant.Constants.Identity.IDENTITY_CONTEXT);
-        NacosUser user;
-        if (identityContext == null
-                || (user = (NacosUser) identityContext.getParameter(AuthConstants.NACOS_USER_KEY)) == null) {
-            throw new HttpSessionRequiredException("session expired!");
+        if (Objects.isNull(request.getSession().getAttribute(RequestUtil.NACOS_USER_KEY))) {
+            return false;
         }
+
+        NacosUser user = (NacosUser) request.getSession().getAttribute(RequestUtil.NACOS_USER_KEY);
         // admin
         if (user.isGlobalAdmin()) {
             return true;
@@ -194,18 +182,10 @@ public class UserController {
      * @return A collection of users, empty set if no user is found
      * @since 1.2.0
      */
-    @GetMapping(params = "search=accurate")
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.READ)
-    public Page<User> getUsers(@RequestParam int pageNo, @RequestParam int pageSize,
-            @RequestParam(name = "username", required = false, defaultValue = "") String username) {
-        return userDetailsService.getUsersFromDatabase(pageNo, pageSize, username);
-    }
-    
-    @GetMapping(params = "search=blur")
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.READ)
-    public Page<User> fuzzySearchUser(@RequestParam int pageNo, @RequestParam int pageSize,
-            @RequestParam(name = "username", required = false, defaultValue = "") String username) {
-        return userDetailsService.findUsersLike4Page(username, pageNo, pageSize);
+    @GetMapping
+    @Secured(resource = NacosAuthConfig.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.READ)
+    public Object getUsers(@RequestParam int pageNo, @RequestParam int pageSize) {
+        return userDetailsService.getUsersFromDatabase(pageNo, pageSize);
     }
     
     /**
@@ -224,16 +204,15 @@ public class UserController {
     public Object login(@RequestParam String username, @RequestParam String password, HttpServletResponse response,
             HttpServletRequest request) throws AccessException {
         
-        if (AuthSystemTypes.NACOS.name().equalsIgnoreCase(authConfigs.getNacosAuthSystemType())
-                || AuthSystemTypes.LDAP.name().equalsIgnoreCase(authConfigs.getNacosAuthSystemType())) {
-            NacosUser user = iAuthenticationManager.authenticate(request);
+        if (AuthSystemTypes.NACOS.name().equalsIgnoreCase(authConfigs.getNacosAuthSystemType())) {
+            NacosUser user = (NacosUser) authManager.login(request);
             
-            response.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + user.getToken());
+            response.addHeader(NacosAuthConfig.AUTHORIZATION_HEADER, NacosAuthConfig.TOKEN_PREFIX + user.getToken());
             
             ObjectNode result = JacksonUtils.createEmptyJsonNode();
             result.put(Constants.ACCESS_TOKEN, user.getToken());
-            result.put(Constants.TOKEN_TTL, jwtTokenManager.getTokenTtlInSeconds(user.getToken()));
-            result.put(Constants.GLOBAL_ADMIN, iAuthenticationManager.hasGlobalAdminRole(user));
+            result.put(Constants.TOKEN_TTL, authConfigs.getTokenValidityInSeconds());
+            result.put(Constants.GLOBAL_ADMIN, user.isGlobalAdmin());
             result.put(Constants.USERNAME, user.getUserName());
             return result;
         }
@@ -242,6 +221,7 @@ public class UserController {
         UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username,
                 password);
         
+        RestResult<String> rr = new RestResult<String>();
         try {
             // use the method authenticate of AuthenticationManager(default implement is ProviderManager) to valid Authentication
             Authentication authentication = authenticationManager.authenticate(authenticationToken);
@@ -250,10 +230,14 @@ public class UserController {
             // generate Token
             String token = jwtTokenManager.createToken(authentication);
             // write Token to Http header
-            response.addHeader(AuthConstants.AUTHORIZATION_HEADER, "Bearer " + token);
-            return RestResultUtils.success("Bearer " + token);
+            response.addHeader(NacosAuthConfig.AUTHORIZATION_HEADER, "Bearer " + token);
+            rr.setCode(200);
+            rr.setData("Bearer " + token);
+            return rr;
         } catch (BadCredentialsException authentication) {
-            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, "Login failed");
+            rr.setCode(401);
+            rr.setMessage("Login failed");
+            return rr;
         }
     }
     
@@ -268,6 +252,8 @@ public class UserController {
     @Deprecated
     public RestResult<String> updatePassword(@RequestParam(value = "oldPassword") String oldPassword,
             @RequestParam(value = "newPassword") String newPassword) {
+        
+        RestResult<String> rr = new RestResult<String>();
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         String username = ((UserDetails) principal).getUsername();
         User user = userDetailsService.getUserFromDatabase(username);
@@ -277,15 +263,20 @@ public class UserController {
         try {
             if (PasswordEncoderUtil.matches(oldPassword, password)) {
                 userDetailsService.updateUserPassword(username, PasswordEncoderUtil.encode(newPassword));
-                return RestResultUtils.success("Update password success");
+                rr.setCode(200);
+                rr.setMessage("Update password success");
+            } else {
+                rr.setCode(401);
+                rr.setMessage("Old password is invalid");
             }
-            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), "Old password is invalid");
         } catch (Exception e) {
-            return RestResultUtils.failed(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Update userpassword failed");
+            rr.setCode(500);
+            rr.setMessage("Update userpassword failed");
         }
+        return rr;
     }
-    
-    
+
+
     /**
      * Fuzzy matching username.
      *
@@ -293,7 +284,7 @@ public class UserController {
      * @return Matched username
      */
     @GetMapping("/search")
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
+    @Secured(resource = NacosAuthConfig.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
     public List<String> searchUsersLikeUsername(@RequestParam String username) {
         return userDetailsService.findUserLikeUsername(username);
     }

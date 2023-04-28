@@ -33,10 +33,10 @@ public class TypeUtilsTest {
     @Test
     public void parameterize() {
         ParameterizedType stringComparableType = TypeUtils.parameterize(List.class, String.class);
-        Assert.assertEquals("java.util.List<java.lang.String>", stringComparableType.toString());
+        Assert.assertEquals("java.util.List<class java.lang.String>", stringComparableType.toString());
         
         ParameterizedType stringIntegerComparableType = TypeUtils.parameterize(Map.class, String.class, Integer.class);
-        Assert.assertEquals("java.util.Map<java.lang.String, java.lang.Integer>",
+        Assert.assertEquals("java.util.Map<class java.lang.String, class java.lang.Integer>",
                 stringIntegerComparableType.toString());
     }
 }

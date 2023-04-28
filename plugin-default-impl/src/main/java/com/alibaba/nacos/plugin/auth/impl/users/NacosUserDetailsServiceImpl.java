@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.annotation.PostConstruct;
+
 /**
  * Custom user service.
  *
@@ -50,7 +52,12 @@ public class NacosUserDetailsServiceImpl implements UserDetailsService {
     @Autowired
     private AuthConfigs authConfigs;
     
-    @Scheduled(initialDelay = 5000, fixedDelay = 15000)
+    @PostConstruct
+    private void init() {
+        reload();
+    }
+    
+    @Scheduled(initialDelay = 15000, fixedDelay = 15000)
     private void reload() {
         try {
             Page<User> users = getUsersFromDatabase(1, Integer.MAX_VALUE, StringUtils.EMPTY);

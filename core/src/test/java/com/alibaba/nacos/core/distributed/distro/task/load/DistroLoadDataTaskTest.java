@@ -77,6 +77,11 @@ public class DistroLoadDataTaskTest extends TestCase {
     
     @Mock
     private DistroCallback loadCallback;
+
+    @BeforeClass
+    public static void setUpBeforeClass() {
+        EnvUtil.setEnvironment(new MockEnvironment());
+    }
     
     @BeforeClass
     public static void setUpBeforeClass() {

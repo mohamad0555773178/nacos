@@ -16,8 +16,9 @@
 
 package com.alibaba.nacos.core.code;
 
-import com.alibaba.nacos.common.spi.NacosServiceLoader;
+import com.alibaba.nacos.core.listener.LoggingApplicationListener;
 import com.alibaba.nacos.core.listener.NacosApplicationListener;
+import com.alibaba.nacos.core.listener.StartingApplicationListener;
 import org.springframework.boot.ConfigurableBootstrapContext;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.EventPublishingRunListener;
@@ -25,7 +26,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * {@link org.springframework.boot.SpringApplicationRunListener} before {@link EventPublishingRunListener} execution.
@@ -38,9 +40,14 @@ public class SpringApplicationRunListener implements org.springframework.boot.Sp
     private final SpringApplication application;
     
     private final String[] args;
-
-    Collection<NacosApplicationListener> nacosApplicationListeners = NacosServiceLoader.load(NacosApplicationListener.class);
-
+    
+    private List<NacosApplicationListener> nacosApplicationListeners = new ArrayList<>();
+    
+    {
+        nacosApplicationListeners.add(new LoggingApplicationListener());
+        nacosApplicationListeners.add(new StartingApplicationListener());
+    }
+    
     public SpringApplicationRunListener(SpringApplication application, String[] args) {
         this.application = application;
         this.args = args;

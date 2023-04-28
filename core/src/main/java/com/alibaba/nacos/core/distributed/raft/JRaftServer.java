@@ -19,9 +19,8 @@ package com.alibaba.nacos.core.distributed.raft;
 import com.alibaba.nacos.common.JustForTest;
 import com.alibaba.nacos.common.model.RestResult;
 import com.alibaba.nacos.common.utils.ConvertUtils;
-import com.alibaba.nacos.common.utils.InternetAddressUtil;
+import com.alibaba.nacos.common.utils.IPUtil;
 import com.alibaba.nacos.common.utils.LoggerUtils;
-import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.common.utils.ThreadUtils;
 import com.alibaba.nacos.consistency.ProtoMessageUtil;
 import com.alibaba.nacos.consistency.RequestProcessor;
@@ -65,6 +64,7 @@ import com.alipay.sofa.jraft.rpc.RpcServer;
 import com.alipay.sofa.jraft.rpc.impl.cli.CliClientServiceImpl;
 import com.alipay.sofa.jraft.util.BytesUtil;
 import com.alipay.sofa.jraft.util.Endpoint;
+import com.google.common.base.Joiner;
 import com.google.protobuf.Message;
 import org.springframework.util.CollectionUtils;
 
@@ -105,6 +105,15 @@ import java.util.function.BiConsumer;
 public class JRaftServer {
     
     // Existential life cycle
+    
+    static {
+        // Set bolt buffer
+        // System.getProperties().setProperty("bolt.channel_write_buf_low_water_mark", String.valueOf(64 * 1024 * 1024));
+        // System.getProperties().setProperty("bolt.channel_write_buf_high_water_mark", String.valueOf(256 * 1024 * 1024));
+        
+        System.getProperties().setProperty("bolt.netty.buffer.low.watermark", String.valueOf(128 * 1024 * 1024));
+        System.getProperties().setProperty("bolt.netty.buffer.high.watermark", String.valueOf(256 * 1024 * 1024));
+    }
     
     private RpcServer rpcServer;
     
@@ -157,7 +166,7 @@ public class JRaftServer {
         RaftExecutor.init(config);
         
         final String self = config.getSelfMember();
-        String[] info = InternetAddressUtil.splitIPPortStr(self);
+        String[] info = IPUtil.splitIPPortStr(self);
         selfIp = info[0];
         selfPort = Integer.parseInt(info[1]);
         localPeerId = PeerId.parsePeer(self);
@@ -203,8 +212,8 @@ public class JRaftServer {
                 rpcServer = JRaftUtils.initRpcServer(this, localPeerId);
                 
                 if (!this.rpcServer.init(null)) {
-                    Loggers.RAFT.error("Fail to init [BaseRpcServer].");
-                    throw new RuntimeException("Fail to init [BaseRpcServer].");
+                    Loggers.RAFT.error("Fail to init [RpcServer].");
+                    throw new RuntimeException("Fail to init [RpcServer].");
                 }
                 
                 // Initialize multi raft group service framework
@@ -255,8 +264,8 @@ public class JRaftServer {
             copy.setSnapshotIntervalSecs(doSnapshotInterval);
             Loggers.RAFT.info("create raft group : {}", groupName);
             RaftGroupService raftGroupService = new RaftGroupService(groupName, localPeerId, copy, rpcServer, true);
-    
-            // Because BaseRpcServer has been started before, it is not allowed to start again here
+            
+            // Because RpcServer has been started before, it is not allowed to start again here
             Node node = raftGroupService.start(false);
             machine.setNode(node);
             RouteTable.getInstance().updateConfiguration(groupName, configuration);
@@ -348,7 +357,7 @@ public class JRaftServer {
      * @return join success
      */
     void registerSelfToCluster(String groupId, PeerId selfIp, Configuration conf) {
-        while (!isShutdown) {
+        for (; ; ) {
             try {
                 List<PeerId> peerIds = cliService.getPeers(groupId, conf);
                 if (peerIds.contains(selfIp)) {
@@ -468,7 +477,7 @@ public class JRaftServer {
                 Map<String, String> params = new HashMap<>();
                 params.put(JRaftConstants.GROUP_ID, group);
                 params.put(JRaftConstants.COMMAND_NAME, JRaftConstants.REMOVE_PEERS);
-                params.put(JRaftConstants.COMMAND_VALUE, StringUtils.join(waitRemove, StringUtils.COMMA));
+                params.put(JRaftConstants.COMMAND_VALUE, Joiner.on(",").join(waitRemove));
                 RestResult<String> result = maintainService.execute(params);
                 if (result.ok()) {
                     successCnt.incrementAndGet();

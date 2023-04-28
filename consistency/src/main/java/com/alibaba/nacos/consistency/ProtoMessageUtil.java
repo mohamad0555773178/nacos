@@ -34,9 +34,9 @@ public class ProtoMessageUtil {
      * should be different from field tags of ReadRequest or WriteQuest.
      */
     public static final int REQUEST_TYPE_FIELD_TAG = 7 << 3;
-    
+
     public static final int REQUEST_TYPE_READ = 1;
-    
+
     public static final int REQUEST_TYPE_WRITE = 2;
     
     /**

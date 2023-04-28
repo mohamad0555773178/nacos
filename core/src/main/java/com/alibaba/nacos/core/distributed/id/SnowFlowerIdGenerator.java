@@ -19,6 +19,7 @@ package com.alibaba.nacos.core.distributed.id;
 import com.alibaba.nacos.consistency.IdGenerator;
 import com.alibaba.nacos.sys.env.EnvUtil;
 import com.alibaba.nacos.sys.utils.InetUtils;
+import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +29,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * copy from http://www.cluozy.com/home/hexo/2018/08/11/shariding-JDBC-snowflake/.
@@ -46,8 +46,6 @@ import java.util.concurrent.TimeUnit;
 @SuppressWarnings("all")
 public class SnowFlowerIdGenerator implements IdGenerator {
     
-    private static final String DATETIME_PATTERN =  "yyyy-MM-dd HH:mm:ss.SSS";
-    
     /**
      * Start time intercept (2018-08-05 08:34)
      */
@@ -55,29 +53,23 @@ public class SnowFlowerIdGenerator implements IdGenerator {
     
     private static final Logger logger = LoggerFactory.getLogger(SnowFlowerIdGenerator.class);
     
-    // the bits of sequence
+    // 序列所占位数
     private static final long SEQUENCE_BITS = 12L;
     
-    // the bits of workerId
+    // workerId所占位数
     private static final long WORKER_ID_BITS = 10L;
     
-    // the mask of sequence (111111111111B = 4095)
+    // 序列掩码（111111111111B = 4095）
     private static final long SEQUENCE_MASK = 4095L;
     
-    // the left shift bits of workerId equals 12 bits
+    // workerId左边共12位（序列号）
     private static final long WORKER_ID_LEFT_SHIFT_BITS = 12L;
     
-    // the left shift bits of timestamp equals 22 bits (WORKER_ID_LEFT_SHIFT_BITS + workerId)
+    // 时间戳左边共22位（序列号+workerId）
     private static final long TIMESTAMP_LEFT_SHIFT_BITS = 22L;
     
-    // the max of worker ID is 1024
+    // 工作机器ID最大值1024
     private static final long WORKER_ID_MAX_VALUE = 1024L;
-    
-    //CLOCK_REALTIME
-    private final long startWallTime = System.currentTimeMillis();
-    
-    //CLOCK_MONOTONIC
-    private final long monotonicStartTime = System.nanoTime();
     
     private long workerId;
     
@@ -116,13 +108,11 @@ public class SnowFlowerIdGenerator implements IdGenerator {
     }
     
     @Override
-    public long workerId() {
-        return workerId;
-    }
-    
-    @Override
     public synchronized long nextId() {
-        long currentMillis = currentTimeMillis();
+        long currentMillis = System.currentTimeMillis();
+        Preconditions.checkState(this.lastTime <= currentMillis,
+                "Clock is moving backwards, last time is %d milliseconds, current time is %d milliseconds",
+                new Object[] {this.lastTime, currentMillis});
         if (this.lastTime == currentMillis) {
             if (0L == (this.sequence = ++this.sequence & 4095L)) {
                 currentMillis = this.waitUntilNextTime(currentMillis);
@@ -132,9 +122,8 @@ public class SnowFlowerIdGenerator implements IdGenerator {
         }
         
         this.lastTime = currentMillis;
-        
         if (logger.isDebugEnabled()) {
-            logger.debug("{}-{}-{}", (new SimpleDateFormat(DATETIME_PATTERN)).format(new Date(this.lastTime)),
+            logger.debug("{}-{}-{}", (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")).format(new Date(this.lastTime)),
                     workerId, this.sequence);
         }
         
@@ -174,16 +163,13 @@ public class SnowFlowerIdGenerator implements IdGenerator {
      */
     private long waitUntilNextTime(long lastTimestamp) {
         long time;
-        time = currentTimeMillis();
+        time = System.currentTimeMillis();
         while (time <= lastTimestamp) {
-            time = currentTimeMillis();
+            ;
+            time = System.currentTimeMillis();
         }
         
         return time;
-    }
-    
-    private long currentTimeMillis() {
-        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - monotonicStartTime) + startWallTime;
     }
     
 }

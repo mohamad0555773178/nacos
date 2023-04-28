@@ -53,8 +53,6 @@ public class InternetAddressUtil {
     
     private static final String CHECK_OK = "ok";
     
-    private static final Pattern DOMAIN_PATTERN = Pattern.compile("[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+\\.?");
-    
     private static final String IPV4_TUPLE = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])";
     
     private static final Pattern IPV4_PATTERN = Pattern
